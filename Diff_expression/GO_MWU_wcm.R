@@ -1,3 +1,5 @@
+# Adapted by Jasmine Alqassar from Mikhail Matz's GO_MWU.R https://github.com/z0on/GO_MWU
+
 setwd("/projectnb/mullenl/alqassar/diff_expression_wcm/DEseq/")
 
 # Edit these to match your data file names: 
