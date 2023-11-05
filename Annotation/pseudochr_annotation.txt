@@ -1,0 +1,310 @@
+#transcriptome_maker_notes.txt
+
+### Overview of Pipeline Structure ###
+	# Round 0: BUSCO Assessment of Genome Assembly and Eggnog-mapper annotations generated 
+	# Round 1: Assign Transcript and Proteins via BLAST and Repeat Masking
+	# Round 1.5: Train Ab initio software (SNAP and Augustus)
+	# Round 2: Run Ab initio software 
+	# Round 2.5: Example of Repeat Training of Ab initio software 
+	# Repeat rounds 1.5 and 2 until AED scores are desireable
+	# Last Maker Round: Run Blastp to add functional annotations to MAKER results in GFF3 file
+	
+# Round 0: BUSCO Assessment of Genome Assembly and Eggnog-mapper annotations generated 
+
+
+#------ Round 1: Assign Transcript and Proteins via BLAST and Repeat Masking
+
+	# add emapper_pseudochr_output.emapper.genepred.gff to 
+	#Edit the control files in the following ways:
+		##In maker_exe.ctl add the following paths:
+		makeblastdb=/share/pkg.7/maker/3.01.04/install/bin/../exe/blast/bin/makeblastdb #location of NCBI+ makeblastdb executable
+		blastn=/share/pkg.7/maker/3.01.04/install/bin/../exe/blast/bin/blastn #location of NCBI+ blastn executable
+		blastx=/share/pkg.7/maker/3.01.04/install/bin/../exe/blast/bin/blastx #location of NCBI+ blastx executable
+		tblastx=/share/pkg.7/maker/3.01.04/install/bin/../exe/blast/bin/tblastx #location of NCBI+ tblastx executable
+		RepeatMasker=/share/pkg.7/maker/3.01.04/install/bin/../exe/RepeatMasker/RepeatMasker #location of RepeatMasker executable
+		exonerate=/share/pkg.7/maker/3.01.04/install/bin/../exe/exonerate/bin/exonerate #location of exonerate executable
+		snap=/share/pkg.7/maker/3.01.04/install/bin/../exe/snap/snap #location of snap executable
+		
+		##In maker_opts.ctl change the following:
+		genome=path/to/your/genome 
+		organism_type= #eukaryotic or 
+		est_pass=1 #use ESTs in maker_gff: 1 = yes, 0 = no
+		altest_pass=1 #use alternate organism ESTs in maker_gff: 1 = yes, 0 = no
+		protein_pass=1 #use protein alignments in maker_gff: 1 = yes, 0 = no
+		rm_pass=1 #use repeats in maker_gff: 1 = yes, 0 = no
+		model_pass=1 #use gene models in maker_gff: 1 = yes, 0 = no
+		pred_pass=1 #use ab-initio predictions in maker_gff: 1 = yes, 0 = no
+		other_pass=1 #passthrough anyything else in maker_gff: 1 = yes, 0 = no
+		est=/path/to/est/evidence #set of ESTs or assembled mRNA-seq in fasta format
+		altest=/path/to/related/est #EST/cDNA sequence file in fasta format from an alternate organism
+		protein=/path/to/protein/evidene
+		model_org=all #select a model organism for RepBase masking in RepeatMasker
+		rmlib=/path/to/repeat/evidence #provide an organism specific repeat library in fasta format for RepeatMasker
+		softmask=1 #use soft-masking rather than hard-masking in BLAST (i.e. seg and dust filtering)
+		est2genome=1 #infer gene predictions directly from ESTs, 1 = yes, 0 = no
+		protein2genome=1 #infer predictions from protein homology, 1 = yes, 0 = no
+		cpus=$NSLOTS
+
+	# Resources requested: 84 hrs, 28 cores
+	# Add to job file:
+
+	module load mvapich/2.3.7
+	module load maker/3.01.04
+	maker -fix_nucleotides -cpus $NSLOTS 
+
+	#After the job: do the following in command line:
+
+	cd wcm_pseudochromosomes_renamed.maker.output/
+	module load mvapich/2.3.7
+	module load maker/3.01.04
+	fasta_merge -d wcm_pseudochromosomes_renamed_master_datastore_index.log 
+	gff3_merge -d wcm_pseudochromosomes_renamed_master_datastore_index.log -o wcm_rnd1_pseudochr.all.gff
+	#make a GFF file without sequences
+	gff3_merge -n -s -d wcm_pseudochromosomes_renamed_master_datastore_index.log > wcm_rnd1_pseudochr.all.maker.noseq.gff
+
+#------ROUND 1.5: Make SNAP and Augustus training files -------
+
+	#Make SNAP HMM in the command line 
+		mkdir ../../1.5run_make_SNAP_FILES
+		cp wcm_rnd1_pseudochr.all.gff ../../1.5run_make_SNAP_FILES
+		cd ../../1.5run_make_SNAP_FILES
+		module load mvapich/2.3.7
+		module load maker/3.01.04
+		maker2zff wcm_rnd1_pseudochr.all.gff #this step makes 2 files: genome.ann and genome.dna
+
+		#the following steps filtered gene models, captured genomic sequence surrounding each model locu, and produce HMM file with these segments
+		fathom -categorize 1000 genome.ann genome.dna
+		fathom -export 1000 -plus uni.ann uni.dna
+		forge export.ann export.dna
+		mkdir ../../2run_maker
+		perl /share/pkg.7/maker/3.01.04/install/exe/snap/hmm-assembler.pl wcm . > ../../2run_maker/wcm.hmm
+
+	#Make Augustus training files using BUSCO 
+		mkdir ../../1.5run_make_Augustus_training
+		cd ../../1.5run_make_Augustus_training
+		#need to pull together training sequences from previous annotation by Maker 
+		module load bedtools 
+		awk -v OFS="\t" '{ if ($3 == "mRNA") print $1, $4, $5 }' /projectnb/mullenl/alqassar/wcm_annotation/1run_maker/wcm_pseudochromosomes_renamed.maker.output/wcm_rnd1_pseudochr.all.maker.noseq.gff | \
+  		awk -v OFS="\t" '{ if ($2 < 1000) print $1, "0", $3+1000; else print $1, $2-1000, $3+1000 }' | \
+  		bedtools getfasta -fi /projectnb/mullenl/alqassar/wcm_annotation/wcm_pseudochromosomes_renamed.fasta -bed - -fo wcm_round1_maker.all.maker.transcripts1000.fasta
+  		#need to copy config file again
+  		module load blast+
+	  	module load hmmer
+	 	module load augustus
+	  	module load busco/3.0.2
+
+  		cp $BUSCO_CONFIG_FILE /projectnb/mullenl/alqassar/wcm_annotation/1.5run_make_Augustus_training #Make sure to edit cpus to $NSLOTS, any other necessary edits
+
+  		# Specs used in job: 24 hrs, 36 cores
+		# Add to job file:
+		module load blast+/2.12.0
+		module load hmmer/3.3.2
+		module load python2
+		module load augustus
+		module load busco/3.0.2
+
+		export AUGUSTUS_CONFIG_PATH="/projectnb/mullenl/alqassar/software/augustus_config" #the config directory you copied earlier 
+		export BUSCO_CONFIG_FILE="/projectnb/mullenl/alqassar/wcm_annotation/1.5run_make_Augustus_training/config.ini"
+		python /share/pkg.7/busco/3.0.2/install/scripts/run_BUSCO.py -i wcm_round1_maker.all.maker.transcripts1000.fasta -o wcm_rnd1_maker -l /projectnb/mullenl/alqassar/wcm_annotation/0_BUSCO_Genome_Assembly/lepidoptera_odb10
+		  -m genome -c $NSLOTS --long -sp human -z --augustus_parameters='--progress=true'
+		
+
+		#after the job is finished 
+		cd /projectnb/mullenl/alqassar/wcm_annotation/1.5run_make_Augustus_training/run_wcm_rnd1_maker/augustus_output/retraining_parameters
+
+		#need to rename the training files and what is inside them to simpler species name, replace whatever follows BUSCO_ with your species abbreviation 
+		rename BUSCO_wcm_rnd1_maker_1956262561 wcm *
+		sed -i 's/BUSCO_wcm_rnd1_maker_1956262561/wcm/g' wcm_parameters.cfg.orig1
+		sed -i 's/BUSCO_wcm_rnd1_maker_1956262561/wcm/g' wcm_parameters.cfg  
+		cd /projectnb/mullenl/alqassar/software/augustus_config/species
+		mkdir wcm
+		cd /projectnb/mullenl/alqassar/wcm_annotation/1.5run_make_Augustus_training/run_wcm_rnd1_maker/augustus_output/retraining_parameters
+		cp wcm* /projectnb/mullenl/alqassar/software/augustus_config/species/wcm #now we are adding the training model we created to this directory to use in the next round 
+		
+		#Last step, Maker decided it doesn't like to take the full GFF3 file for evidence for the next round so we need to split the GFF3 by evidence type:
+		cd /projectnb/mullenl/alqassar/wcm_annotation/1run_maker/wcm_pseudochromosomes_renamed.maker.output
+		awk '{ if ($2 == "est2genome") print $0 }' wcm_rnd1_pseudochr.all.maker.noseq.gff > wcm_rnd1_pseudochr.all.maker.est2genome.gff
+		# protein alignments
+		awk '{ if ($2 == "protein2genome") print $0 }' wcm_rnd1_pseudochr.all.maker.noseq.gff > wcm_rnd1_pseudochr.all.maker.protein2genome.gff
+		# repeat alignments
+		awk '{ if ($2 ~ "repeat") print $0 }' wcm_rnd1_pseudochr.all.maker.noseq.gff > wcm_rnd1_pseudochr.all.maker.repeats.gff
+		
+		#Now we are ready to setup to run SNAP and Augustus 
+		cd ../../2run_maker
+
+#-------ROUND 2: SNAP and AUGUSTUS for the first time-------
+	# copy all the CTL file from the last Maker round and edit the following:
+
+	#need to edit opts.ctl file 
+      # leaving in Fasta original genome file and adding the MAKER GFF3 files we split from round 1
+      # Add path to SNAP hmm file
+      #augustus_species=wcm
+      #est2genome=0
+      #protein2genome=0
+      #cpus=28
+      ### delete all EST evidence (or ir will rerun)
+      ### delete other protein evidence
+      ### delete rmlib
+      ### delete model organism
+
+	#In maker_exe.ctl Add Augustus executable path=/share/pkg.7/augustus/3.3.2/install/bin/augustus
+
+	# Specs used in job: 28 cores
+	# Add to job file:
+		module load mvapich/2.3.7
+		module load maker/3.01.04
+		module load augustus
+		export AUGUSTUS_CONFIG_PATH="/projectnb/mullenl/alqassar/software/augustus_config"
+		maker -fix_nucleotides -q
+
+	#After the job is finished make the following files and rename them based on the round we just completed
+	cd /projectnb/mullenl/alqassar/wcm_annotation/2run_maker/wcm_pseudochromosomes_renamed.maker.output
+
+	module load mvapich/2.3.7
+	module load maker/3.01.04
+
+	fasta_merge -d wcm_pseudochromosomes_renamed_master_datastore_index.log
+	gff3_merge -d wcm_pseudochromosomes_renamed_master_datastore_index.log
+	mv wcm_pseudochromosomes_renamed.all.gff rnd1_abinitio_wcm_pseudochromosomes_renamed.all.gff
+	# make a gff without the sequences 
+	gff3_merge -n -s -d wcm_pseudochromosomes_renamed_master_datastore_index.log > wcm_rnd1_abinitio_wcm_pseudochromosomes.all.maker.noseq.gff
+
+	#After this check the success of this round, first number is gene models, and second is length of gene models 
+	cat rnd1_abinitio_wcm_pseudochromosomes_renamed.all.gff | awk '{ if ($3 == "gene") print $0 }' | awk '{ sum += ($5 - $4) } END { print NR, sum / NR }'
+
+	11,239 gene models
+	7263.05
+
+	#generate an AED plot to measure the success of the round 
+	module load perl
+	perl $SCC_MAKER_BIN/AED_cdf_generator.pl -b 0.025 rnd1_abinitio_wcm_pseudochromosomes_renamed.all.gff > AEDplot_snap_augustus_rnd1
+	#copy the results of this file in excel and highlight the column it pasted into and go to Data > text to column and then make a plot, the more gene models closer to 0, the better 
+	
+	# generate summary statistics 
+	qrsh 
+	cd /projectnb/mullenl/alqassar/wcm_annotation/2run_maker/wcm_pseudochromosomes_renamed.maker.output
+	module load perl/5.28.1
+	module load bioperl/1.7.2
+	module load agat/0.7.0
+	agat_sp_statistics.pl --gff rnd1_abinitio_wcm_pseudochromosomes_renamed.all.gff -o rnd1_ab_initio_wcm_annotation_summary
+
+
+#-------ROUND 2.5: Example of Repeat Training of Ab initio software--------
+
+	#Now you need to make a new HMM file for SNAP from the last GFF and re-run BUSCO to make a new training model for Augustus
+
+	#Make SNAP HMM
+	module load mvapich/2.3.7
+	module load maker/3.01.04
+	maker2zff rnd1_abinitio_wcm_pseudochromosomes_renamed.all.gff #this step makes 2 files: genome.ann and genome.dna
+	
+	#the following steps filtered gene models, captured genomic sequence surrounding each model locu, and produce HMM file with these segments
+	
+	fathom -categorize 1000 genome.ann genome.dna
+	fathom -export 1000 -plus uni.ann uni.dna
+	forge export.ann export.dna
+	module load perl
+	perl /share/pkg.7/maker/3.01.04/install/exe/snap/hmm-assembler.pl wcm . > ../rnd2_wcm.hmm
+
+	##Now you need to update the Augustus BUSCO training 
+	#go to the output of SNAP and Augutus and now have to make file with the mRNA regions with 100bp around them
+	mkdir ../../2.5run_make_SNAP_Augustus_Files
+	cd ../../2.5run_make_SNAP_Augustus_Files
+	module load bedtools 
+	awk -v OFS="\t" '{ if ($3 == "mRNA") print $1, $4, $5 }' /projectnb/mullenl/alqassar/wcm_annotation/2run_maker/wcm_pseudochromosomes_renamed.maker.output/wcm_rnd1_abinitio_wcm_pseudochromosomes.all.maker.noseq.gff | \
+	awk -v OFS="\t" '{ if ($2 < 1000) print $1, "0", $3+1000; else print $1, $2-1000, $3+1000 }' | \
+	bedtools getfasta -fi /projectnb/mullenl/alqassar/wcm_annotation/wcm_pseudochromosomes_renamed.fasta -bed - -fo wcm_rnd2abinitio_maker.all.maker.transcripts1000.fasta
+
+	cp wcm_rnd2abinitio_maker.all.maker.transcripts1000.fasta ../rnd2_train_augustus/
+	cd ../rnd2_train_augustus
+
+	# edited the job file and config.ini file for BUSCO to train Augustus and ran job 
+
+
+	#now need to add the retraining parameters as a species for augustus 
+	cd /projectnb/mullenl/alqassar/software/augustus_config/species
+	mv wcm wcm_from_rnd1_pseudochr
+	mkdir wcm #did this to change the old wcm param name so it will use the new one 
+	cd /projectnb/mullenl/alqassar/wcm_annotation/2.5run_make_SNAP_Augustus_Files/run_wcm_rnd2_maker/augustus_output/retraining_parameters
+	rename BUSCO_wcm_rnd2_maker_3834806458 wcm *
+	sed -i 's/BUSCO_wcm_rnd2_maker_3834806458/wcm/g' wcm_parameters.cfg.orig1
+	sed -i 's/BUSCO_wcm_rnd2_maker_3834806458/wcm/g' wcm_parameters.cfg  
+	cp wcm* /projectnb/mullenl/alqassar/software/augustus_config/species/wcm
+
+	#To add previous evidence to new run you have to split the GFF3 file into EST, protein, and repeat evidence you can't just feed it the GFF3 file
+	cd /projectnb/mullenl/alqassar/wcm_annotation/2run_SNAP_and_Augustus/rnd1_final_purged_primary.maker.output
+	awk '{ if ($2 == "est_gff:est2genome") print $0 }' wcm_rnd1_abinitio_wcm_pseudochromosomes.all.maker.noseq.gff > wcm_rnd1.all.maker.est2genome.gff
+	# protein alignments
+	awk '{ if ($2 == "protein_gff:protein2genome") print $0 }' wcm_rnd1_abinitio_wcm_pseudochromosomes.all.maker.noseq.gff > wcm_rnd1.all.maker.protein2genome.gff
+	# repeat alignments
+	awk '{ if ($2 ~ "repeat") print $0 }' wcm_rnd1_abinitio_wcm_pseudochromosomes.all.maker.noseq.gff > wcm_rnd1.all.maker.repeats.gff
+
+#-------ROUND 3: Round 2 of Ab initio gene prediction--------
+	#copy previous rounds 4 control files
+	#copy job script 
+	#edit the maker_opts.ctl to include hmm file 
+	#Add the three GFF3 filepaths into your maker_opts.ctl  /projectnb/mullenl/alqassar/wcm_annotation/2run_maker/wcm_pseudochromosomes_renamed.maker.output
+	#Now let's run Augustus and SNAP for a second time!
+	
+	#Afer the job is finished
+	#Now make a GFF3 files and FASTA files
+	cd /projectnb/mullenl/alqassar/wcm_annotation/2run_maker/wcm_pseudochromosomes_renamed.maker.output
+	module load mvapich/2.3.7
+	module load maker/3.01.04
+
+	fasta_merge -d wcm_pseudochromosomes_renamed_master_datastore_index.log -o wcm_rnd2_abinitio
+	gff3_merge -s -d wcm_pseudochromosomes_renamed_master_datastore_index.log > rnd2_abinitio_final_purged_primary.all.gff
+	# make a gff without the sequences 
+	gff3_merge -n -s -d wcm_pseudochromosomes_renamed_master_datastore_index.log > wcm_rnd2abinitio.all.maker.noseq.gff
+mv rnd2_abinitio_final_purged_primary.all.gff wcm_rnd2_abinitio_wcm_pseudochromosomes.all.maker.all.gff
+mv wcm_rnd2abinitio.all.maker.noseq.gff wcm_rnd2_abinitio_wcm_pseudochromosomes.all.maker.noseq.gff
+
+	#After this check the success of this round
+	cat wcm_rnd2_abinitio_wcm_pseudochromosomes.all.maker.all.gff | awk '{ if ($3 == "gene") print $0 }' | awk '{ sum += ($5 - $4) } END { print NR, sum / NR }'
+# results: 11267 7127.35
+
+	#to create AED plot
+	module load perl
+	perl $SCC_MAKER_BIN/AED_cdf_generator.pl -b 0.025  wcm_rnd2_abinitio_wcm_pseudochromosomes.all.maker.all.gff> AEDplot_snap_augustus_rnd1
+	#copy the results of this file in excel and highlight the column it pasted into and go to Data > text to column and then make a plot, the more gene models closer to 0, the better 
+
+#-------POST-AB INITIO: Protein name mapping--------
+
+# run Blast against the fasta and then we will add it to the GFF3 file 
+##Tutorial for this: http://weatherby.genetics.utah.edu/MAKER/wiki/index.php/MAKER_Tutorial_for_WGS_Assembly_and_Annotation_Winter_School_2018
+
+#need to format uniprot fasta into Blast database if you haven't already
+module load blast+
+makeblastdb -in uniprot_sprot.fasta -dbtype prot -out uniprot_db
+
+#add to job file:
+	module load blast+/2.12.0
+	BLASTDB="/projectnb/mullenl/alqassar/wcm_annotation/3_functional_annotations"
+
+	blastp -db ${BLASTDB}/uniprot_db -query ${BLASTDB}/wcm_rnd2_abinitio.all.maker.proteins.fasta \
+	-evalue 1e-6 -max_hsps 1 -max_target_seqs 1 -outfmt 6 -num_threads $NSLOTS > ${BLASTDB}/output.blastp
+
+# add putative functions from the BLAST report to GFF3 file 
+qrsh -l h_rt=6:00:00 -pe omp 4
+cd /projectnb/mullenl/alqassar/wcm_annotation/3_functional_annotations
+module load mvapich/2.3.7
+module load maker/3.01.04
+BLASTDB="/projectnb/mullenl/alqassar/wcm_annotation/protein_mapping"
+maker_functional_gff uniprot_sprot.fasta output.blastp ../2run_maker/wcm_pseudochromosomes_renamed.maker.output/wcm_rnd2_abinitio_wcm_pseudochromosomes.all.maker.all.gff> rnd2_abinitio_functional_annotations.all.gff
+
+
+cat  rnd2_abinitio_functional_annotations.all.gff | awk '{ if ($3 == "gene") print $0 }' | awk '{ sum += ($5 - $4) } END { print NR, sum / NR }'
+
+	Results: 11,267 gene models with gene length of 7263.05
+
+	# generate summary statistics 
+	qrsh -l h_rt=6:00:00 -pe omp 4
+	cd /projectnb/mullenl/alqassar/wcm_annotation/3_functional_annotations
+	module load perl/5.28.1
+	module load bioperl/1.7.2
+	module load agat/0.7.0
+	agat_sp_statistics.pl --gff rnd2_abinitio_functional_annotations.all.gff -o rnd2_ab_initio_functional_annotations_wcm_annotation_summary
+
+	#to generate the amount of repetitive elements masked
+		awk '{ if ($2 ~ "repeat") print $0 }' rnd2_abinitio_functional_annotations.all.gff | wc -l
+

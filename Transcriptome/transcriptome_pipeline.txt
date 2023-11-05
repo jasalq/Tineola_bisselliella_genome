@@ -1,0 +1,319 @@
+#transcriptome_pipeline_notes.txt
+
+# The following was modified by Jasmine Alqassar from the Matz Lab's original pipeline and Dr. Hanny Rivera's GitHub Repo
+# Original pipeline documentation: https://github.com/z0on/annotatingTranscriptome
+# Dr. Hanny Rivera's Repo: https://github.com/hrivera28/Oculina_arbuscula_transcriptome/blob/3afa762d1f5f5fc04139fe67b051abd121885406/transcriptome_assembly.sh
+
+# downloaded the original fastq.gz files from Tufts sequencing: 6 fastq.gz files (3 library preps seperated by developmental stage with fwd and reverse reads)
+	qrsh -l h_rt=24:00:00 -pe omp 8
+	cd /projectnb/mullenl/alqassar/wcm_transcriptome/assembly/raw_reads
+	wget ftp://user:password@ftp.mydomain.com/path/file.ext  #replace with actual values 
+
+	# these files were placed in /projectnb/mullenl/alqassar/wcm_transcriptome/assembly/raw_reads
+	qrsh -l h_rt=24:00:00 -pe omp 8
+	cd /projectnb/mullenl/alqassar/wcm_transcriptome/assembly/raw_reads
+	gunzip *fastq.gz
+
+#------Transcriptome Assembly-------
+
+# Step 1: Trim the polyG tails from Novaseq with Fastp
+	# --cut_right with trim poly g is sliding-window trimming is found more effective with Novasew data 
+
+	# to set up the job file with the needed commands
+	
+	> polyG_trim.qsub 
+	for i in *R1_001.fastq; do
+	echo -e "fastp --trim_poly_g -L -A --cut_right \
+	-i $i -I ${i/R1_001.fastq/}R2_001.fastq -o ${i/R1_001.fastq/}polyG_trim_R1.fastq -O ${i/R1_001.fastq/}polyG_trim_R2.fastq" >>polyG_trim.qsub;
+	done
+
+	#the command should look like this in the job file 
+	fastp --trim_poly_g -L -A --cut_right -i $R1inputfile -I $R2inputfile -o $R1outputfile -O $R2outputfile
+
+####add to job file
+
+#!/bin/bash -l
+
+#script written by Jasmine Alqassar 2023
+
+#$ -P mullenl
+#$ -N polyG_trim
+#$ -m bea
+#$ -M jasalq@bu.edu
+#$ -j y # Join standard output and error to a single file
+#$ -o polyG_trim.qlog
+#$ -l h_rt=100:00:00
+#$ -pe omp 28
+#$ -l mem_per_core=18G
+
+
+echo "=========================================================="
+echo "Starting on : $(date)"
+echo "Running on node : $(hostname)"
+echo "Current directory : $(pwd)"
+echo "Current job ID : $JOB_ID"
+echo "Current job name : $JOB_NAME"
+echo "=========================================================="
+
+module load fastp
+
+
+# Step 2: Remove the adapter sequences from raw reads and quality trimming 
+
+	# to set up the job file with the needed commands
+	>adap_trim.qsub
+	for i in *polyG_trim_R1.fastq; do
+	echo -e "fastp --detect_adapter_for_pe -q 20 -l 25 \
+	-i $i -I ${i/polyG_trim_R1.fastq/}polyG_trim_R2.fastq -o ${i/polyG_trim_R1.fastq/}adap_trim_R1.fastq -O ${i/polyG_trim_R1.fastq/}adap_trim_R2.fastq" >>adap_trim.qsub;
+	done
+		
+	# the command should look like this in the job file 
+	fastp --detect_adapter_for_pe -q 20 -l 25 -i $R1inputfile -I $R2inputfile -o $R1outputfile -O $R2outputfile
+		#this command should automatically detect the paired end adaptors
+
+	# add header to job file and submit job
+
+# Step 3: Assembly with Trinity
+
+	# Concatenate all trimmed foward read files and all trimmed reverse read files
+		qrsh -l h_rt=12:00:00 -pe omp 12
+
+		cd /projectnb/mullenl/alqassar/wcm_transcriptome/assembly/raw_reads
+		cat *adap_trim_R1.fastq >> all_trimmed_R1.fastq
+		cat *adap_trim_R2.fastq >> all_trimmed_R2.fastq
+
+		#Move concatenated files into their own directory
+		mkdir ../concat_reads
+		mv all_trimmed*fastq ../concat_reads
+
+
+	# Trinity: Assembly 
+
+		# make job file for Trinity
+		# header with request for 28 cores, 18G per core (504G), for 100 hours 
+		module load gcc/8.3.0
+		module load samtools/1.12
+		module load jellyfish/2.3.0
+		module load bowtie2/2.4.2
+		module load salmon/1.1.0
+		module load python3/3.8.10
+		module load trinity/2.14.0
+
+		Trinity --seqType fq --max_memory 504G --left /projectnb/mullenl/alqassar/wcm_transcriptome/assembly/concat_reads/all_trimmed_R1.fastq \
+		--right /projectnb/mullenl/alqassar/wcm_transcriptome/assembly/raw_reads/all_trimmed_R2.fastq \
+		--CPU 28 > trinity_log.txt
+		
+		#if trimming with Trinity prepared the adaptor fasta file: Truseq_CD.fa based on the adapter sequences and format of this file: https://github.com/timflutre/trimmomatic/blob/3694641a92d4dd9311267fed85b05c7a11141e7c/adapters/TruSeq3-PE.fa
+
+# Step 4: Remove the short contigs (<500 bp) using Sarah Davies' script 
+	qrsh -l h_rt=12:00:00 -pe omp 12
+	cd /projectnb/mullenl/alqassar/wcm_transcriptome/assembly
+	module load perl/5.28.1
+	module load bioperl/1.7.2
+	/projectnb/mullenl/alqassar/scripts/noshorts.pl Trinity.fasta 500
+
+	retained:	99930
+	discarded:	131386
+
+#------ Collapse, Annotate, and Clean Transcriptome
+
+	# Step 1: Collapse really similar isoforms that Trinity didn't call the same thing
+
+	# need to first work on installing cd-hit
+	module load miniconda/23.1.0
+	conda create -n my_bioconda -c bioconda python=3.5
+	source activate my_bioconda
+	conda install -c bioconda cd-hit
+	
+	module load miniconda/23.1.0
+	conda create -n cd-hit -c bioconda python=3.5
+	source activate my_bioconda
+	conda activate cd-hit 
+	conda install -c bioconda cd-hit
+	cd /projectnb/mullenl/alqassar/conda_enviroments
+	conda activate cd-hit # to activate enviroment
+	cd-hit-est --help #to check installed correctly
+
+	# Now I am going to do an interactive session to collapse these
+	qrsh -l h_rt=12:00:00 -pe omp 12 
+	cd /projectnb/mullenl/alqassar/conda_enviroments
+	module load miniconda/23.1.0
+	conda activate cd-hit # to activate enviroment
+	cd /projectnb/mullenl/alqassar/wcm_transcriptome/assembly/
+	cd-hit-est -i noshorts_Trinity.fasta -o collapsed_transcripts.fasta -c 0.99 -G 0 -aL 0.3 -aS 0.3 > collapse.log
+	source deactivate
+
+	# Step 2: Rename the headers to match  what Misha Matz's scripts want 
+
+	# TRINITY_XXX gene=isogroupXXX
+	# Mine will be Wcm_XXX gene=isogroupXXX 
+	cat collapsed_transcripts.fasta | sed -E 's/len=.*//'| sed -E 's/^>TRINITY_DN((.*)_i[0-9]+)/>Wcm_\1 gene=isogroupWcm_\2/' > collapsed_short_header_forblast.fasta
+	mkdir ../annotation
+	mv collapsed_short_header_forblast.fasta ../annotation
+	
+	# Step 3: Break up the fasta to speed up BLAST 
+	module load perl 
+	mkdir /projectnb/mullenl/alqassar/wcm_transcriptome/annotation/files_for_blast 
+	chmod +x /projectnb/mullenl/alqassar/scripts/fasta-splitter.pl
+	#divide into 8 parts 
+	/projectnb/mullenl/alqassar/scripts/fasta-splitter.pl --n-parts 8  --out-dir /projectnb/mullenl/alqassar/wcm_transcriptome/annotation/files_for_blast collapsed_short_header_forblast.fasta
+
+	# Step 4: Set up and submit an Array Job to run these blasts in parallel
+	#first need to make Blast database
+	qrsh -l h_rt=6:00:00 -pe omp 12 #probably didn't even need to do this
+	module load blast+
+	makeblastdb -in uniprot_sprot.fasta -input_type fasta -dbtype prot -out Uniprot 
+
+	#create command file used to create array job file 
+
+	> blast_commands
+		for i in collapsed_short_header_forblast.part-*; do
+		echo -e "blastx -query $i -db Uniprot -evalue 1e-3 -num_descriptions 5 -num_alignments 5 -out ${i/collapsed_short_header_forblast./}.br" >>blast_commands;
+		done
+
+	#create job file 
+	module load python3
+	/projectnb/mullenl/alqassar/scripts/scc6_qsub_launcher.py -N parallel_blast -P mullenl -M jasalq@bu.edu -m bea -omp 16 -j y -h_rt 24:00:00  -jobsfile blast_commands
+	-o parallel_blast.qlog # add to job file before submitting 
+	#submit job 
+	qsub parallel_blast_array.qsub
+
+	# Step 5: Concatenate the Blast result files (fasta.br)
+
+	# need to cut the first 14 lines when concatenating
+	for i in *.fasta.br; do cat $i | tail -n +14 >> wcm_blastx.br; done
+	# but copy the first 14 lines from the first line 
+
+
+	# Step 6: Generate seq2iso files
+	grep ">" collapsed_short_header_forblast.fasta| sed -E 's/>((.*)_i[0-9]+)/\1\t\2/' |sed -E 's/\sgene=.*//'>wcm_seq2iso.tab
+
+	module load perl  
+	cat collapsed_short_header_forblast.fasta | perl -pe 's/>(c(\d+)\S+)/>$1 gene=isogroup$2/' > wcm_iso.fasta
+
+
+	# Step 6: Assign GO terms and gene names from the uniprot database, need to do this to the iso fasta 
+	#### this isn't working 
+	module load perl 
+
+	getGOfromUniProtKB.pl blast=wcm_blastx.br prefix=Wcm fastaQuery=wcm_iso.fasta 
+
+	getGOfromUniProtKB.pl blast=wcm_blastx.br prefix=transcriptome fastaQuery=collapsed_short_header_forblast.fasta
+
+	getGeneNameFromUniProtKB.pl blast=wcm_blastx.br prefix=Wcm fastaQuery=collapsed_short_header_forblast.fasta
+
+
+	wcm_iso.fasta 
+
+
+#trying this because step 6 isn't working 
+
+	# Step 7 extracting coding sequences and corresponding protein translations:
+	module unload perl # make sure you do this if you have perl loaded
+	module load bioperl
+	bioperl CDS_extractor_v2.pl collapsed_short_header_forblast.fasta wcm_blastx.br allhits bridgegaps
+
+	# upload the extracted protein sequences here
+
+	##submitted PRO_ends.fas
+
+	
+	http://eggnogdb.embl.de/#/app/emapper 
+
+	# download the results table, 
+	# follow steps described here: https://github.com/z0on/emapper_to_GOMWU_KOGMWU 
+	# to extract gene names, GO and KOG annotations
+
+# extract gene names from emapper
+awk -F "\t" 'BEGIN {OFS="\t" }{print $1,$10 }' out.emapper.annotations | grep GO | perl -pe 's/,/;/g' >wcm_gene2go.tab
+
+
+
+# make file that says WCM_final_transcriptome 
+# use a isogroup to GO term file - maybe use R to seperate the GO terms by ; Misha Matz script maybe 
+
+### don't need to do this 
+
+# Now can use Add_anot_field.pl script to add it to fasta file 
+
+module load perl
+perl addAnnotField.pl collapsed_short_header_forblast.fasta Wcm_gene2geneName.tab >> wcm_annotated_transcriptome.fasta
+
+
+perl addAnnotField.pl collapsed_short_header_forblast.fasta Wcm_gene2geneName.tab >> wcm_annotated_transcriptome_2.fasta
+# Now want some statistics 
+
+module load bioperl
+seq_stats.pl wcm_annotated_transcriptome.fasta > stats_wcm_annotated_transcriptome.txt
+
+###### Differential Expression ######
+# Using Misha Matz's https://github.com/z0on/tag-based_RNAseq and Dr. Hannah Aichelman's notes
+
+# Step 1: Mapping reads to reference transcriptome I previously created 
+	# start interactive session
+	qrsh -l h_rt=6:00:00 -pe omp 12 
+	cd /projectnb/mullenl/alqassar/diff_expression_wcm
+
+	# build bowtie2 mapping database
+	module load bowtie2
+	bowtie2-build wcm_transcriptome_final.fasta wcm_transcriptome_final.fasta
+	
+	# make commands for bowtie mapping
+	cd /projectnb/mullenl/alqassar/wcm_transcriptome/assembly/raw_reads/finaltrims
+	export transcriptome_name=/projectnb/mullenl/alqassar/diff_expression_wcm/wcm_transcriptome_final.fasta
+
+	for i in *polyG_trim_R1.fastq; do
+	echo -e "bowtie2 --no-unal --local --score-min L,16,1 -L 16 -q -p 16 -I 0 -X 1500 --fr -x $transcriptome_name \
+	-1 ../wcm_transcriptome/assembly/raw_reads/finaltrims/$i -2 ../wcm_transcriptome/assembly/raw_reads/finaltrims/${i/_R1.fastq/}_R2.fastq -S ${i/_R1.fastq/}.fastq.sam" >>map;
+	done
+
+	mv map /projectnb/mullenl/alqassar/diff_expression_wcm
+	cd /projectnb/mullenl/alqassar/diff_expression_wcm
+
+
+	/projectnb/mullenl/alqassar/scripts/scc6_qsub_launcher.py -N map_wcm_reads_transcriptome -P mullenl -m bea -M jasalq@bu.edu -omp 16 -j y -h_rt 99:00:00 -jobsfile map
+
+	# add error file output to qsub file and module load bowtie2
+	nano map_wcm_reads_transcriptome_array.qsub
+	module load bowtie2
+	#$ -o map_wcm_reads.qlog
+
+	qsub  map_wcm_reads_transcriptome_array.qsub
+
+# Step 2: Generating read-counts-per gene 
+	module load perl
+	scripts/samcount_launch_bt2.pl '\.sam' wcm_seq2iso.tab > sam_count
+
+	/projectnb/mullenl/alqassar/scripts/scc6_qsub_launcher.py -N counts -P mullenl -m bea -M jasalq@bu.edu -omp 16 -j y -h_rt 48:00:00 -jobsfile sam_count
+	# add module load perl and qlog file 
+	module load perl
+	#$ -o counts.qlog
+
+expression_compiler.pl *.sam.counts > wcm_counts.txt
+
+# REDO  Step 2 for counts per isogroup
+
+	#make seq2iso file really just iso2iso
+	module load perl
+	scripts/samcount_launch_bt2.pl '\.sam' wcm_iso2iso.tab > sam_count_iso2iso
+	mv sam_count_iso2iso iso_counts/
+	cd iso_counts2
+
+	#had to run each file individually with 28 core nodes and 9G memory per core 
+
+# after sam.counts files are produces, compile them
+module load perl
+../expression_compiler.pl *.sam.counts > wcm_iso_counts.txt
+
+# Step 3: Take counts files to RStudio DESeq
+
+
+
+
+
+
+
+
+
+
+
