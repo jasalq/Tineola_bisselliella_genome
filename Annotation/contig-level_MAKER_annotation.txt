@@ -1,0 +1,336 @@
+#These are notes from running a modified version of the MAKER pipeline v3.01.04 on the SCC written by Jasmine Alqassar 2023 
+
+#RESOURCES USED: 
+### https://gist.github.com/darencard/bb1001ac1532dd4225b030cf0cd61ce2
+### https://bioinformaticsworkbook.org/dataAnalysis/GenomeAnnotation/Intro_To_Maker.html#gsc.tab=0
+### https://darencard.net/blog/2018-01-10-gene-structure-summary/
+### AED plot help https://darencard.net/blog/2017-05-16-maker-genome-annotation/
+
+#NOTE: After August 1st, 2023 you will have to load a different mpiavich module with Maker, because of the Alma8 update, new modules to load:
+	module load mvapich/2.3.7
+	module load maker/3.01.04		
+
+# Prior to running Maker I wanted to see some of the genome assembly statistics #
+	#using stats.sh Written by Brian Bushnell
+	#located in /projectnb/mullenl/alqassar/scripts
+
+	mkdir /projectnb/mullenl/alqassar/wcm_annotation/assembly_stats
+	nano assembly_stats.qsub
+	#in job file:
+	module load bbmap/38.16
+	stats.sh in=/projectnb/mullenl/alqassar/wcm_annotation/assembly_stats/final_purged_primary.fasta
+
+
+### Overview of Pipeline Structure ###
+	# Round 0: BUSCO Assessment of Genome Assembly from PacBio
+	# Round 1: Assign Transcript and Proteins via BLAST and Repeat Masking
+	# Round 1.5: Train Ab initio software (SNAP and Augustus)
+	# Round 2: Run Ab initio software 
+	# Round 2.5: Example of Repeat Training of Ab initio software 
+	# Repeat rounds 1.5 and 2 until AED scores are desireable
+	# Last Maker Round: Run Blastp to add protein names to MAKER results in GFF3 file
+	# Post-Maker: Functional Annotation Options ***currently working on using Eggnog-mapper2
+
+## I suggest to keep organized make seperate directories for each of these runs ##
+
+#------ROUND 0 BUSCO Assessment of Genome Assembly from PacBio-------
+	
+	mkdir 0_BUSCO_Genome_Assembly
+
+	# Download lineage evidence relevant to your species from: https://busco.ezlab.org/busco_v4_data.html
+
+	#Need to copy the augustus_config directory from the software so we can have write permission
+	cp -r /share/pkg.7/augustus/3.3.2/install/config/ /projectnb/mullenl/alqassar/software 
+
+	#Need to copy the default BUSCO config file and edit it 
+	module load busco/3.0.2
+	cp $BUSCO_CONFIG_FILE /projectnb/mullenl/alqassar/wcm_annotation/0_BUSCO_Genome_Assembly #Make sure to edit cpus to $NSLOTS, any other necessary edits
+
+	# Specs used in job: 100 hrs, 28 cores
+	# Add to job file:
+
+	module load blast+/2.12.0
+	module load hmmer/3.3.2
+	module load python2
+	module load augustus
+	module load busco/3.0.2
+
+	export AUGUSTUS_CONFIG_PATH="/projectnb/mullenl/alqassar/software/augustus_config"
+	export BUSCO_CONFIG_FILE="/projectnb/mullenl/alqassar/wcm_annotation/0_BUSCO_Genome_Assembly/config.ini"
+	# format of BUSCO command: busco -i <sequence file> -l <lineage> -o <output name> -m <mode> <other options> 
+	python /share/pkg.7/busco/3.0.2/install/scripts/run_BUSCO.py -i final_purged_primary.fasta -l /projectnb/mullenl/alqassar/wcm_annotation/0_BUSCO_Genome_Assembly/lepidoptera_odb10 -o busco_run_output -m geno
+
+	#after job: ran generate plot script manually python3 $SCC_BUSCO_BIN/generate_plot.py -/path/to/busco/output/directory/
+
+#------Round 1: Assign Transcript and Proteins via BLAST and Repeat Masking-------
+	# Before Anything: download transcriptome or EST evidence for your species, EST evidence from related species, protein database (I used Uniprot), and Repetitive elements for species family 
+	
+	#Need to generate Maker's 4 config files 
+	module load mvapich/2.3.3
+	module load maker/3.01.04
+	maker -CTL
+
+	#Edit the control files in the following ways:
+
+	##In maker_exe.ctl add the following paths:
+	makeblastdb=/share/pkg.7/maker/3.01.04/install/bin/../exe/blast/bin/makeblastdb #location of NCBI+ makeblastdb executable
+	blastn=/share/pkg.7/maker/3.01.04/install/bin/../exe/blast/bin/blastn #location of NCBI+ blastn executable
+	blastx=/share/pkg.7/maker/3.01.04/install/bin/../exe/blast/bin/blastx #location of NCBI+ blastx executable
+	tblastx=/share/pkg.7/maker/3.01.04/install/bin/../exe/blast/bin/tblastx #location of NCBI+ tblastx executable
+	RepeatMasker=/share/pkg.7/maker/3.01.04/install/bin/../exe/RepeatMasker/RepeatMasker #location of RepeatMasker executable
+	exonerate=/share/pkg.7/maker/3.01.04/install/bin/../exe/exonerate/bin/exonerate #location of exonerate executable
+	snap=/share/pkg.7/maker/3.01.04/install/bin/../exe/snap/snap #location of snap executable
+
+	##In maker_opts.ctl change the following:
+	genome=path/to/your/genome 
+	organism_type= #eukaryotic or 
+	est_pass=1 #use ESTs in maker_gff: 1 = yes, 0 = no
+	altest_pass=1 #use alternate organism ESTs in maker_gff: 1 = yes, 0 = no
+	protein_pass=1 #use protein alignments in maker_gff: 1 = yes, 0 = no
+	rm_pass=1 #use repeats in maker_gff: 1 = yes, 0 = no
+	model_pass=1 #use gene models in maker_gff: 1 = yes, 0 = no
+	pred_pass=1 #use ab-initio predictions in maker_gff: 1 = yes, 0 = no
+	other_pass=1 #passthrough anyything else in maker_gff: 1 = yes, 0 = no
+	est=/path/to/est/evidence #set of ESTs or assembled mRNA-seq in fasta format
+	altest=/path/to/related/est #EST/cDNA sequence file in fasta format from an alternate organism
+	protein=/path/to/protein/evidene
+	model_org=all #select a model organism for RepBase masking in RepeatMasker
+	rmlib=/path/to/repeat/evidence #provide an organism specific repeat library in fasta format for RepeatMasker
+	softmask=1 #use soft-masking rather than hard-masking in BLAST (i.e. seg and dust filtering)
+	est2genome=1 #infer gene predictions directly from ESTs, 1 = yes, 0 = no
+	protein2genome=1 #infer predictions from protein homology, 1 = yes, 0 = no
+	cpus=$NSLOTS
+
+	# Specs used in job: 84 hrs, 28 cores
+	# Add to job file:
+
+	module load mvapich/2.3.3
+	module load maker/3.01.04
+	maker -fix_nucleotides -q
+
+	#After the job: do the following in command line:
+
+	cd final_purged_primary.maker.output
+	fasta_merge -d final_purged_primary_master_datastore_index.log
+	gff3_merge -d final_purged_primary_master_datastore_index.log
+	#make a GFF file without sequences
+	gff3_merge -n -s -d final_purged_primary_master_datastore_index.log > wcm_rnd1.all.maker.noseq.gff
+
+#------ROUND 1.5: Make SNAP and Augustus training files -------
+
+	#Make SNAP HMM in the command line 
+		mkdir 1.5run_make_SNAP_FILES
+		cp final_purged_primary.all.gff ../1.5run_make_SNAP_FILES
+		module load mvapich/2.3.3
+		module load maker/3.01.04
+		maker2zff final_purged_primary.all.gff #this step makes 2 files: genome.ann and genome.dna
+
+		#the following steps filtered gene models, captured genomic sequence surrounding each model locu, and produce HMM file with these segments
+		fathom -categorize 1000 genome.ann genome.dna
+		fathom -export 1000 -plus uni.ann uni.dna
+		forge export.ann export.dna
+		mkdir /projectnb/mullenl/alqassar/wcm_annotation/2run_maker
+		perl /share/pkg.7/maker/3.01.04/install/exe/snap/hmm-assembler.pl wcm . > ../2run_maker/wcm.hmm
+
+	#Make Augustus training files using BUSCO 
+		mkdir 1.5run_make_Augustus_training
+		#need to pull together training sequences from previous annotation by Maker 
+		module load bedtools 
+		awk -v OFS="\t" '{ if ($3 == "mRNA") print $1, $4, $5 }' /projectnb/mullenl/alqassar/wcm_annotation/1.5run_make_Augustus_training/wcm_rnd1.all.maker.noseq.gff | \
+  		awk -v OFS="\t" '{ if ($2 < 1000) print $1, "0", $3+1000; else print $1, $2-1000, $3+1000 }' | \
+  		bedtools getfasta -fi /projectnb/mullenl/alqassar/wcm_annotation/final_purged_primary.fasta -bed - -fo wcm_round1_maker.all.maker.transcripts1000.fasta
+
+  		#need to copy config file again
+  		cp $BUSCO_CONFIG_FILE /projectnb/mullenl/alqassar/wcm_annotation/1.5run_make_Augustus_training #Make sure to edit cpus to $NSLOTS, any other necessary edits
+
+  		# Specs used in job: 24 hrs, 36 cores
+		# Add to job file:
+		module load blast+/2.12.0
+		module load hmmer/3.3.2
+		module load python2
+		module load augustus
+		module load busco/3.0.2
+
+		export AUGUSTUS_CONFIG_PATH="/projectnb/mullenl/alqassar/software/augustus_config" #the config directory you copied earlier 
+		export BUSCO_CONFIG_FILE="/projectnb/mullenl/alqassar/wcm_annotation/1.5run_make_Augustus_training/config.ini"
+		python /share/pkg.7/busco/3.0.2/install/scripts/run_BUSCO.py -i wcm_round1_maker.all.maker.transcripts1000.fasta -o try2_wcm_rnd1_maker -l /projectnb/mullenl/alqassar/wcm_annotation/0_BUSCO_Genome_Assemb$
+		  -m genome -c $NSLOTS --long -sp human -z --augustus_parameters='--progress=true'
+		
+		#after the job is finished 
+		cd /busco/output/directory
+
+		#need to rename the training files and what is inside them to simpler species name, replace whatever follows BUSCO_ with your species abbreviation 
+		rename BUSCO_try2_wcm_rnd1_maker_1725367582 wcm *
+		sed -i 's/BUSCO_try2_wcm_rnd1_maker_1725367582/wcm/g' wcm_parameters.cfg.orig1
+		sed -i 's/BUSCO_try2_wcm_rnd1_maker_1725367582/wcm/g' wcm_parameters.cfg  
+		cd /projectnb/mullenl/alqassar/software/augustus_config/species
+		mkdir wcm
+		cd /projectnb/mullenl/alqassar/wcm_annotation/0_BUSCO_Genome_Assembly/busco_run_output/run_try2_wcm_rnd1_maker/augustus_output/retraining_parameters
+		cp wcm* /projectnb/mullenl/alqassar/software/augustus_config/species/wcm #now we are adding the training model we created to this directory to use in the next round 
+		
+		#Last step, Maker decided it doesn't like to take the full GFF3 file for evidence for the next round so we need to split the GFF3 by evidence type:
+		awk '{ if ($2 == "est2genome") print $0 }' wcm_rnd1abinitio.all.maker.noseq.gff > wcm_rnd1.all.maker.est2genome.gff
+		# protein alignments
+		awk '{ if ($2 == "protein2genome") print $0 }' wcm_rnd1abinitio.all.maker.noseq.gff > wcm_rnd1.all.maker.protein2genome.gff
+		# repeat alignments
+		awk '{ if ($2 ~ "repeat") print $0 }' wcm_rnd1abinitio.all.maker.noseq.gff > wcm_rnd1.all.maker.repeats.gff
+		#Now we are ready to setup to run SNAP and Augustus 
+
+#-------ROUND 2: SNAP and AUGUSTUS for the first time-------
+	# copy all the CTL file from the last Maker round and edit the following:
+
+	#need to edit opts.ctl file 
+      # leaving in Fasta original genome file and adding the MAKER GFF3 files we split from round 1
+      # Add path to SNAP hmm file
+      #augustus_species=wcm
+      #est2genome=0
+      #protein2genome=0
+      #cpus=28
+      ### delete all EST evidence (or ir will rerun)
+      ### delete other protein evidence
+      ### delete rmlib
+      ### delete model organism
+
+	#In maker_exe.ctl Add Augustus executable path=/share/pkg.7/augustus/3.3.2/install/bin
+
+	# Specs used in job: 24 hrs, 36 cores
+	# Add to job file:
+		module load mvapich/2.3.3
+		module load maker/3.01.04
+		module load augustus
+		export AUGUSTUS_CONFIG_PATH="/projectnb/mullenl/alqassar/software/augustus_config"
+		maker -fix_nucleotides -q
+
+	#After the job is finished make the following files and rename them based on the round we just completed
+	module load mvapich/2.3.3
+	module load maker/3.01.04
+
+	fasta_merge -d final_purged_primary_master_datastore_index.log
+	gff3_merge -d final_purged_primary_master_datastore_index.log
+	mv final_purged_primary.all.gff rnd1_abinitio_final_purged_primary.all.gff
+	# make a gff without the sequences 
+	gff3_merge -n -s -d final_purged_primary_master_datastore_index.log > wcm_rnd2abinitio.all.maker.noseq.gff
+
+	#After this check the success of this round, first number is gene models, and second is length of gene models 
+	cat rnd1_abinitio_final_purged_primary.all.gff | awk '{ if ($3 == "gene") print $0 }' | awk '{ sum += ($5 - $4) } END { print NR, sum / NR }'
+
+	#generate an AED plot to measure the success of the round 
+	module load perl
+	perl $SCC_MAKER_BIN/AED_cdf_generator.pl -b 0.025 rnd1_abinitio_final_purged_primary.all.gff > AEDplot_snap_augustus_rnd1
+	#copy the results of this file in excel and highlight the column it pasted into and go to Data > text to column and then make a plot, the more gene models closer to 0, the better 
+
+#-------ROUND 2.5: Example of Repeat Training of Ab initio software--------
+
+	#Now you need to make a new HMM file for SNAP from the last GFF and re-run BUSCO to make a new training model for Augustus
+	mkdir 2.5run_make_SNAP_Augustus_Files 
+	cp wcm_rnd1abinitio_fix.all.maker.gff 2.5run_make_SNAP_Augustus_Files 
+
+	#Make SNAP HMM
+	module load mvapich/2.3.3
+	module load maker/3.01.04
+	maker2zff wcm_rnd1abinitio_fix.all.maker.gff #this step makes 2 files: genome.ann and genome.dna
+
+	#the following steps filtered gene models, captured genomic sequence surrounding each model locu, and produce HMM file with these segments
+	fathom -categorize 1000 genome.ann genome.dna
+	fathom -export 1000 -plus uni.ann uni.dna
+	forge export.ann export.dna
+	module load perl
+	perl /share/pkg.7/maker/3.01.04/install/exe/snap/hmm-assembler.pl wcm . > ../rnd2_fix_wcm.hmm
+
+	##Now you need to update the Augustus BUSCO training 
+	#go to the output of SNAP and Augutus and now have to make file with the mRNA regions with 100bp around them
+	cd /projectnb/mullenl/alqassar/wcm_annotation/2run_SNAP_and_Augustus/rnd1_final_purged_primary.maker.output
+	module load bedtools 
+	awk -v OFS="\t" '{ if ($3 == "mRNA") print $1, $4, $5 }' /projectnb/mullenl/alqassar/wcm_annotation/2run_SNAP_and_Augustus/rnd1_final_purged_primary.maker.output/wcm_rnd2abinitio.all.maker.noseq.gff | \
+	awk -v OFS="\t" '{ if ($2 < 1000) print $1, "0", $3+1000; else print $1, $2-1000, $3+1000 }' | \
+	bedtools getfasta -fi /projectnb/mullenl/alqassar/wcm_annotation/final_purged_primary.fasta -bed - -fo wcm_rnd1abinitio_maker.all.maker.transcripts1000.fasta
+
+	cp wcm_rnd1abinitio_maker.all.maker.transcripts1000.fasta ../rnd2_train_augustus/
+	cd ../rnd2_train_augustus
+
+	# edited the job file and config.ini file for BUSCO to train Augustus and ran job 
+
+	#now need to add the retraining parameters as a species for augustus 
+	cd /projectnb/mullenl/alqassar/software/augustus_config/species
+	mv wcm wcm_from_rnd1
+	mkdir wcm #did this to change the old wcm param name so it will use the new one 
+	cd /projectnb/mullenl/alqassar/wcm_annotation/2run_SNAP_and_Augustus/rnd2_train_augustus/run_training_for_rnd2_Augustus_wcm/augustus_output/retraining_parameters
+	rename BUSCO_training_for_rnd2_Augustus_wcm_2751892433 wcm *
+	sed -i 's/BUSCO_training_for_rnd2_Augustus_wcm_2751892433/wcm/g' wcm_parameters.cfg.orig1
+	sed -i 's/BUSCO_training_for_rnd2_Augustus_wcm_2751892433/wcm/g' wcm_parameters.cfg  
+	cp wcm* /projectnb/mullenl/alqassar/software/augustus_config/species/wcm
+
+	#To add previous evidence to new run you have to split the GFF3 file into EST, protein, and repeat evidence you can't just feed it the GFF3 file
+	cd /projectnb/mullenl/alqassar/wcm_annotation/2run_SNAP_and_Augustus/rnd1_final_purged_primary.maker.output
+	awk '{ if ($2 == "est_gff:est2genome") print $0 }' wcm_rnd1abinitio.all.maker.noseq.gff > wcm_rnd1.all.maker.est2genome.gff
+	# protein alignments
+	awk '{ if ($2 == "protein_gff:protein2genome) print $0 }' wcm_rnd1abinitio.all.maker.noseq.gff > wcm_rnd1.all.maker.protein2genome.gff
+	# repeat alignments
+	awk '{ if ($2 ~ "repeat") print $0 }' wcm_rnd1abinitio.all.maker.noseq.gff > wcm_rnd1.all.maker.repeats.gff
+
+#-------ROUND 3: Round 2 of Ab initio gene prediction--------
+	#copy previous rounds 4 control files
+	#copy job script 
+	#edit the maker_opts.ctl to include rnd2_fix_wcm.hmm
+	#Add the three GFF3 filepaths into your maker_opts.ctl 
+	#Now let's run Augustus and SNAP for a second time!
+	
+	#Afer the job is finished
+	#Now make a GFF3 files and FASTA files
+	cd /projectnb/mullenl/alqassar/wcm_annotation/2run_SNAP_and_Augustus/rnd2_final_purged_primary.maker.output
+	module load mvapich/2.3.3
+	module load maker/3.01.04
+
+	fasta_merge -d final_purged_primary_master_datastore_index.log
+	gff3_merge -s -d final_purged_primary_master_datastore_index.log > rnd2_abinitio_final_purged_primary.all.gff
+	# make a gff without the sequences 
+	gff3_merge -n -s -d final_purged_primary_master_datastore_index.log > wcm_rnd2abinitio.all.maker.noseq.gff
+
+	#After this check the success of this round
+	cat rnd2_abinitio_final_purged_primary.all.gff | awk '{ if ($3 == "gene") print $0 }' | awk '{ sum += ($5 - $4) } END { print NR, sum / NR }'
+
+	#to create AED plot
+	module load perl
+	perl $SCC_MAKER_BIN/AED_cdf_generator.pl -b 0.025 rnd1_abinitio_final_purged_primary.all.gff > AEDplot_snap_augustus_rnd1
+	#copy the results of this file in excel and highlight the column it pasted into and go to Data > text to column and then make a plot, the more gene models closer to 0, the better 
+
+
+#I ended up doing 5 rounds of Ab initio gene prediction but it really depends on your species, genome, and AED scores
+
+#-------POST-AB INITIO: Annotation summary statistics-------
+	#I am still trying to figure out a better way to pull out annotation statistics, I am not sure how accurate this is with a MAKER annotation and am still having problems with it
+
+	#I used this script: agat_sp_statistics.pl included in the agat module 
+
+module load perl/5.28.1
+module load bioperl/1.7.2
+module load agat/0.7.0
+agat_sp_statistics.pl --gff emapper3_output.emapper.decorated.gff -o eggnog_wcm_annotation_summary
+
+
+#-------POST-AB INITIO:Protein name mapping--------
+
+# run Blast against the fasta and then we will add it to the GFF3 file 
+##Tutorial for this: http://weatherby.genetics.utah.edu/MAKER/wiki/index.php/MAKER_Tutorial_for_WGS_Assembly_and_Annotation_Winter_School_2018
+
+#need to format uniprot fasta into Blast database if you haven't already
+module load blast+
+makeblastdb -in uniprot_sprot.fasta -dbtype prot -out uniprot_db
+
+#add to job file:
+	module load blast+
+	BLASTDB=/projectnb/mullenl/alqassar/wcm_annotation/protein_mapping
+	blastp -query final_purged_primary.fasta -db uniprot_db -evalue 1e-6 -max_hsps 1 -max_target_seqs 1 -outfmt 6 -out output.blastp
+
+# try to add putative functions from the BLAST report to GFF3 file 
+module load mvapich/2.3.3
+module load maker/3.01.04
+BLASTDB="/projectnb/mullenl/alqassar/wcm_annotation/protein_mapping"
+maker_functional_gff uniprot_sprot.fasta output_rcs.blastp rnd4_abinitio_final_purged_primary.all.gff > rnd4_abinitio_final_purged_primary_renamed.all.gff
+
+# count the number of proteins functionally annotated
+ wc -l output.blastp
+
+
+
+
