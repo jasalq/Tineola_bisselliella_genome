@@ -1,0 +1,42 @@
+# Written by Jasmine Alqassar 2023 to assemble Tineola bisselliella genome
+
+# Satsuma Chromosembler: https://satsuma.sourceforge.net/
+
+
+ #to run Chromosemble I had to download Satsuma2 from GitHub: https://github.com/bioinfologics/satsuma2
+
+ cd /projectnb/mullenl/alqassar/software/satsuma2
+ tar -xvf satsuma2-linux.tar.gz 
+ cd /product/bin
+ export SATSUMA2_PATH=/projectnb/mullenl/alqassar/software/satsuma2/product/bin
+ # to run
+ ./Chromosemble -t /projectnb/mullenl/alqassar/wcm_annotation/BUSCO_comparison_genomes/GCA_948150575.1_ilTinPell1.1_genome/GCA_948150575.1_ilTinPell1.1_genomic.fna -q /projectnb/mullenl/alqassar/wcm_annotation/final_purged_primary.fasta  -o /projectnb/mullenl/alqassar/synteny/satsuma_output
+
+# I used Brian Bushnell's Stats.sh script to see how many scaffolds and then pseudochromosomes I have 
+
+#Now I need to find out the length to make an updated karyotype file to re-run Satsuma with the pseudochromosomes
+module load samtools
+samtools faidx pseudochromosomes.fasta
+ cut -f1-2 pseudochromosomes.fasta.fai > pseudochromosomes_length.txt
+
+ # Going back to the pseudochromosomes.fasta 
+ # I need to make friendlier names for them, copy the fasta file and rename it to "renamed"
+ #use the sed command from your Find and Replace Script to replace the names 
+#The two renamed files to create karyotype from is pseudochromosomes_renamed.fasta and pseudochromosomes_renamed.fasta.fai
+
+#Now create karyotype files for the new pseudochromosomes 
+#made a copy of the Satsuma qsub and edited to include pseudochromosome fasta and run chr to chr comparison between wcm and tineola pellionella
+## file name is satsuma_chr_synteny.qsub
+
+# Now let's run a BUSCO analysis on the pseudochromosome assembly 
+    cd /projectnb/mullenl/alqassar/synteny
+    mkdir BUSCO_wcm_pseudochromosomes
+    cd satsuma_chromosemble_output
+    cp wcm_pseudochromosomes_renamed.fasta ../BUSCO_wcm_pseudochromosomes/
+    cd ../../wcm_annotation/BUSCO_comparison_genomes/
+    cp busco_Tin_pell_genome.qsub /projectnb/mullenl/alqassar/synteny/BUSCO_wcm_pseudochromosomes/
+    cd ../../synteny/BUSCO_wcm_pseudochromosomes
+    # edit the job file 
+
+
+
