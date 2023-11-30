@@ -23,8 +23,8 @@ library(VennDiagram)
 #library(genefilter)
 #library(DESeq)
 
-setwd("/projectnb/mullenl/alqassar/diff_expression_wcm/")
-countData <- read.table("wcm_iso_counts.txt")
+setwd("/projectnb/mullenl/alqassar/diff_expression_wcm/DEseq")
+countData <- read.table("wcm_counts.txt")
 names(countData) = c("adult", "late_stage_larva", "early_stage_larva")
 
 treat = c("adult","larvae","larvae")
@@ -47,7 +47,7 @@ head(results)
 
 # write out file of normalized counts
 norm.counts = counts(dds, normalized = TRUE) # these are the counts DESeq uses
-write.csv(norm.counts, "normalized_iso_counts_wcm.csv") #these are all counts, not considering treatment comparisons
+write.csv(norm.counts, "normalized_gene_counts_wcm.csv") #these are all counts, not considering treatment comparisons
 
 #Now do an rlogged transformation, which is useful various unsupervised clustering analyses. Be sure the include blind = TRUE as it doesn't normalize the data with any priors from our experimental design. 
 rlogged = rlogTransformation(dds, blind = TRUE)
@@ -56,12 +56,13 @@ rlogged = rlogTransformation(dds, blind = TRUE)
 res_wcm <- results(dds, contrast=c("treat","larvae","adult"))
 head(res_wcm)
 #how many FDR < 10%?
-table(res_wcm$padj<0.01) # we actually get more DEGs when genotype is included in model.
-# 0.1=17643
-# 0.05=14838
-# 0.01=10837
+table(res_wcm$padj<0.001) # we actually get more DEGs when genotype is included in model.
+# 0.1=11359
+# 0.05=9546
+# 0.01=6989
+# 0.001=5066
 summary(res_wcm)
-write.table(res_wcm, file="wcm_iso_dds_results.txt", quote=F, sep="\t")
+write.table(res_wcm, file="wcm_genes_dds_results.txt", quote=F, sep="\t")
 
 # Heatmap of overall expression, sample by distance.
 sampleDists <- as.matrix(dist(t(assay(rlogged))))
@@ -72,10 +73,10 @@ heatmap.2(as.matrix(sampleDists), key=F, trace="none",
 # Individual gene heatmaps
 #Now plotting the z scores, as heatmap2 creates nice clean clusters by doing this. Upregulation indicated by warmer colors, downregulation indicated by cooler colors.
 
-norm_counts = read.csv("normalized_iso_counts_wcm.csv")
-hm = read.table("wcm_iso_dds_results.txt", header=TRUE) %>% 
+norm_counts = read.csv("normalized_gene_counts_wcm.csv")
+hm = read.table("wcm_genes_dds_results.txt", header=TRUE) %>% 
   tibble::rownames_to_column("X") %>%
-  filter(padj < 0.01) %>% # only want the most DEGs
+  filter(padj < 0.001) %>% # only want the most DEGs
   select(X) %>%
   merge(norm_counts, by.x = "X", by.y = "X")  # turn into a countdatafile
 row.names(hm) = hm$X
@@ -92,14 +93,14 @@ hm.z = data.matrix(hm.z)
 
 colour = colorRampPalette(rev(c("chocolate1","#FEE090","grey10", "cyan3","cyan")))(100)
 # heatmap.2(hm.z, col = colour, Rowv = TRUE, Colv = TRUE, scale = "row", 
-          dendrogram = "both",
-          trace = "none", 
-          margin = c(5,15))
+dendrogram = "both",
+trace = "none", 
+margin = c(5,15))
 
 # heatmap.2(hm.z, col = colour, Rowv = TRUE, Colv = TRUE, scale = "column", 
-          dendrogram = "both",
-          trace = "none", 
-          margin = c(5,15))
+dendrogram = "both",
+trace = "none", 
+margin = c(5,15))
 
 heatmap.2(hm.z, col = colour, Rowv = TRUE, Colv = TRUE, scale = "column", 
           dendrogram = "both",
