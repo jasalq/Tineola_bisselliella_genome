@@ -1,0 +1,24 @@
+#!/bin/bash -l
+
+#$ -P mullenl
+#$ -N remove_bac_contam # job name, anything you want
+#$ -m bea
+#$ -M jasalq@bu.edu
+#$ -j y # Join standard output and error to a single file
+#$ -o remove_bac_contam.qlog
+#$ -l h_rt=100:00:00
+#$ -pe omp 28
+
+echo "=========================================================="
+echo "Starting on : $(date)"
+echo "Running on node : $(hostname)"
+echo "Current directory : $(pwd)"
+echo "Current job ID : $JOB_ID"
+echo "Current job name : $JOB_NAME"
+echo "=========================================================="
+
+module load bedtools
+
+bedtools maskfasta -fi /projectnb/mullenl/alqassar/synteny/BUSCO_wcm_pseudochromosomes/wcm_pseudochromosomes_renamed.fasta \
+ -bed /projectnb/mullenl/alqassar/genome_bacterial_contam/run_busco_bac_contam_output/bacterial_contam.bed -fo /projectnb/mullenl/alqassar/wcm_pseudochromosomes_no_bac_contam
+ 
