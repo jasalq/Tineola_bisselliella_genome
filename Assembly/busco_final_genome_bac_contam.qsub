@@ -1,0 +1,37 @@
+#!/bin/bash -l
+
+#This script was written by Jasmine Alqassar 2023 to run BUSCO v3.0.02 
+
+#$ -P mullenl
+#$ -N BUSCO_bac_contam # job name, anything you want
+#$ -m bea
+#$ -M jasalq@bu.edu
+#$ -j y # Join standard output and error to a single file
+#$ -o BUSCO_bac_contam.qlog
+#$ -l h_rt=100:00:00
+#$ -pe omp 28
+#$ -l mem_per_core=13G
+
+echo "=========================================================="
+echo "Starting on : $(date)"
+echo "Running on node : $(hostname)"
+echo "Current directory : $(pwd)"
+echo "Current job ID : $JOB_ID"
+echo "Current job name : $JOB_NAME"
+echo "=========================================================="
+
+
+module load blast+/2.12.0
+module load hmmer/3.3.2
+module load python3
+module load augustus
+module load busco/3.0.2
+
+### format of BUSCO command: busco -i <sequence file> -l <lineage> -o <output name> -m <mode> <other options>
+#### For some reason you have to use this python script to run BUSCO, you can't just use the busco command
+
+export AUGUSTUS_CONFIG_PATH="/projectnb/mullenl/alqassar/software/augustus_config"
+export BUSCO_CONFIG_FILE="/projectnb/mullenl/alqassar/genome_bacterial_contam/config.ini"
+python /share/pkg.7/busco/3.0.2/install/scripts/run_BUSCO.py -i /projectnb/mullenl/alqassar/synteny/BUSCO_wcm_pseudochromosomes/wcm_pseudochromosomes_renamed.fasta -l /share/pkg.7/busco/lineages/bacteria_odb9 -o busco_bac_contam_output -m geno
+
+
