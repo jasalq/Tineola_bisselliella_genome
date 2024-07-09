@@ -2,21 +2,23 @@
 
 <body>  
 
-This release is the companion repository to my master's thesis. The goal of this project was to assemble and annotate a PacBio sequenced <em> Tineola biselliella </em> genome. It used a modified version of the MAKER 3.01.04 annotation pipeline (Cantarel et al., 2008). We also generated an annotated transcriptome containing RNA sequence data from larvae and adults. Lastly, we performed a differential expression and Gene Ontology (GO) enrichment analyses using RNA seq data from early-stage larvae, late-stage larvae, and adults.
+This repository contains all code associated with the manuscript "De Novo Genome Assembly and Annotation for the Synanthropic Webbing Clothes Moth (Tineola bisselliella): A Globally-Distributed, Economically Important Pest", which has been submitted to <em>Genome Biology and Evolution</em>. The goal of this project was to assemble and annotate a PacBio sequenced <em> Tineola biselliella </em> genome. It used a modified version of the MAKER 3.01.04 annotation pipeline (Cantarel et al., 2008). We also generated an annotated transcriptome containing RNA sequence data from larvae and adults and performed synteny alignments between the <em>Tineola bisselliella </em> pseudochromosome genome assembly we generated and other lepidopteran genomes.
 
 Contact info: Jasmine Alqassar (jasalq@bu.edu)
 </body>
 <h2> Genome Sequencing and Assembly </h2>
-<body>
-Two <em> Tineola bisselliella </em> larvae were obtained from an infested skunk fur; their DNA was extracted and sent for PacBio HiFi Sequencing at the University of Deleware. 11 Gb of HiFI reads were assembled using Improved Phased Assembler (IPA) (GitHub: https://github.com/PacificBiosciences/pbipa). This contig level assembly was then assembled into scaffolds and 30 pseudochromosomes using synteny assisted mapping to a closely related species with a chromosome-level assembly,<em> Tinea pellionella</em> (GenBank accession no. GCA_948150575.1), by Satsuma Chromosembler v.3.0 (Grabherr et al., 2010).
+<body>Two <em> Tineola bisselliella </em> larvae were obtained from an infested skunk fur; their DNA was extracted and sent for PacBio HiFi Sequencing at the University of Deleware. 11 Gb of HiFI reads were assembled using Improved Phased Assembler (IPA) (GitHub: https://github.com/PacificBiosciences/pbipa). This contig level assembly was then assembled into scaffolds and 30 pseudochromosomes using synteny assisted mapping to a closely related species with a chromosome-level assembly,<em> Tinea pellionella</em> (GenBank accession no. GCA_948150575.1), by Satsuma Chromosembler v.3.0 (Grabherr et al., 2010). </body>
   
 <h2> Transcriptome Sequencing, Assembly, and Annotation </h2>
+<body> Ten live <em>T. bisselliella</em> individuals (five early-stage larvae, three late-stage larvae, and two adults) were sampled from a colony that was established in the lab in June 2022. RNA was extracted from each individual using a Qiagen RNeasy Micro Kit. Samples were separated into three barcoded pools based on developmental stage (i.e., early-stage larvae, late-stage larvae, or adult) and were then prepped using the Illumina Stranded mRNA Prep method. 100 bp paired-end sequencing of all three libraries was performed on an Illumina NovaSeq Flowcell. The paired-end RNAseq data were assembled and annotated following the protocol presented in Rivera and Davies (2021). </body>
 
 <h2> Genome Annotation </h2>
+<body> The pseudochromosome genome assembly was annotated following the original MAKER pipeline detailed in Cantarel et al. (2008) using the most up-to-date version of the program, MAKER v3.01.04, with the modifications detailed in the manuscript. <body> 
 
 <h2> Synteny Analysis </h2>
+<body>Satsuma was used to perform the synteny analysis (Grabherr et al., 2010), and the R package RIdeogram was used to visualize the output of Satsuma (Hao et al., 2020). Additionally, the synteny alignment between the <em>Tineola bisselliella </em> pseudochromosome genome assembly and <em>Tinea pellionella </em> genome was visualized as a Circos plot using the R package Circlize (Gu et al., 2014). </body>
 
-<h2> Differential Expression and Gene Ontology (GO) Enrichment Analyses </h2>
-
+<h2> Master's Thesis Analysis: Differential Expression and Gene Ontology (GO) Enrichment Analyses </h2>
+<body> As a part of my master's thesis a preliminary differential expression and Gene Ontology (GO) enrichment analyses using RNA seq data from early-stage larvae, late-stage larvae, and adults
 </body>
 
