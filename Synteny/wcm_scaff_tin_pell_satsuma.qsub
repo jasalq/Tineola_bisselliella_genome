@@ -1,0 +1,29 @@
+#!/bin/bash -l
+
+#This script was written by Jasmine Alqassar 2024 to run Satsuma
+
+#$ -P mullenl
+#$ -N wcm_scaff_tin_pell_satsuma_synteny # job name, anything you want
+#$ -m bea
+#$ -M jasalq@bu.edu
+#$ -j y # Join standard output and error to a single file
+#$ -o wcm_scaff_tin_pell_satsuma.qlog
+#$ -l h_rt=24:00:00
+#$ -pe omp 28
+#$ -l mem_per_core=13G
+
+echo "=========================================================="
+echo "Starting on : $(date)"
+echo "Running on node : $(hostname)"
+echo "Current directory : $(pwd)"
+echo "Current job ID : $JOB_ID"
+echo "Current job name : $JOB_NAME"
+echo "=========================================================="
+
+Module load gcc/5.5.0
+
+
+/projectnb/mullenl/alqassar/software/satsuma/satsuma-code-0/SatsumaSynteny -n 28 \
+        -q /projectnb/mullenl/alqassar/synteny/satsuma_chromosemble_output/superscaffolds.fasta \
+        -t /projectnb/mullenl/alqassar/orig_wcm_annotation/BUSCO_comparison_genomes/GCA_948150575.1_ilTinPell1.1_genome/GCA_948150575.1_ilTinPell1.1_genomic.fna \
+        -o /projectnb/mullenl/alqassar/synteny/wcm_scaff_tin_pell_synteny_output
