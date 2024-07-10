@@ -8,7 +8,4 @@
 
 seqtk subseq /projectnb/mullenl/alqassar/synteny/satsuma_chromosemble_output/superscaffolds.fasta extract_list.txt > unmapped_scaffolds.fasta
 
-wcm_pseudochromosomes_no_bac_contam_NCBI.fasta
-
-
-seqtk subseq wcm_pseudochromosomes_no_bac_contam_NCBI.fasta extract.txt > CHR7.fasta
+seqtk subseq wcm_pseudochromosomes_no_bac_contam_NCBI.fasta extract.txt > unmapped_scaffolds.fasta
