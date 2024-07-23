@@ -4,7 +4,7 @@
 
 This repository contains all code associated with the manuscript "De Novo Genome Assembly and Annotation for the Webbing Clothes Moth (<em>Tineola bisselliella</em>): A Globally Distributed, Economically Important Pest", which has been submitted to <em>Genome Biology and Evolution</em>. The goal of this project was to assemble and annotate a PacBio sequenced <em> Tineola biselliella </em> genome. It used a modified version of the MAKER 3.01.04 annotation pipeline (Cantarel et al., 2008). We also generated an annotated transcriptome containing RNA sequence data from larvae and adults and performed synteny alignments between the <em>Tineola bisselliella </em> pseudochromosome genome assembly we generated and other lepidopteran genomes.
 
-Contact info: Jasmine Alqassar (jasalq@bu.edu)
+Contact info: Jasmine Alqassar (j.alqassar@gwu.edu)
 </body>
 <h2> Genome Sequencing and Assembly </h2>
 <body>Two <em> Tineola bisselliella </em> larvae were obtained from an infested skunk fur; their DNA was extracted and sent for PacBio HiFi Sequencing at the University of Deleware. 11 Gb of HiFI reads were assembled using Improved Phased Assembler (IPA) (GitHub: https://github.com/PacificBiosciences/pbipa). This contig level assembly was then assembled into scaffolds and 30 pseudochromosomes using synteny assisted mapping to a closely related species with a chromosome-level assembly,<em> Tinea pellionella</em> (GenBank accession no. GCA_948150575.1), by Satsuma Chromosembler v.3.0 (Grabherr et al., 2010). </body>
