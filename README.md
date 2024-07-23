@@ -2,7 +2,7 @@
 
 <body>  
 
-This repository contains all code associated with the manuscript "De Novo Genome Assembly and Annotation for the Synanthropic Webbing Clothes Moth (<em>Tineola bisselliella</em>): A Globally-Distributed, Economically Important Pest", which has been submitted to <em>Genome Biology and Evolution</em>. The goal of this project was to assemble and annotate a PacBio sequenced <em> Tineola biselliella </em> genome. It used a modified version of the MAKER 3.01.04 annotation pipeline (Cantarel et al., 2008). We also generated an annotated transcriptome containing RNA sequence data from larvae and adults and performed synteny alignments between the <em>Tineola bisselliella </em> pseudochromosome genome assembly we generated and other lepidopteran genomes.
+This repository contains all code associated with the manuscript "De Novo Genome Assembly and Annotation for the Webbing Clothes Moth (<em>Tineola bisselliella</em>): A Globally-Distributed, Economically Important Pest", which has been submitted to <em>Genome Biology and Evolution</em>. The goal of this project was to assemble and annotate a PacBio sequenced <em> Tineola biselliella </em> genome. It used a modified version of the MAKER 3.01.04 annotation pipeline (Cantarel et al., 2008). We also generated an annotated transcriptome containing RNA sequence data from larvae and adults and performed synteny alignments between the <em>Tineola bisselliella </em> pseudochromosome genome assembly we generated and other lepidopteran genomes.
 
 Contact info: Jasmine Alqassar (jasalq@bu.edu)
 </body>
