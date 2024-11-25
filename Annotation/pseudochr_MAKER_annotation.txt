@@ -392,3 +392,6 @@ module load perl/5.28.1
 
 #to rename chromosomes in protein file
 awk 'NR==FNR {map[$1] = $2; next} {for (key in map) gsub(key, map[key]); print}' replacement.txt wcm_rnd2_abinitio.all.maker.proteins.fasta > wcm_rnd2_abinitio.all.maker.proteins.renamed.fasta
+
+# Assess MAKER predicted proteins quality using BUSCO
+# SEE busco_maker_proteins.qsub file
