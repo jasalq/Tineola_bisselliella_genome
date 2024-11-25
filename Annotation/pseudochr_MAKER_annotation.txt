@@ -7,7 +7,7 @@
 	# Round 2: Run Ab initio software 
 	# Round 2.5: Example of Repeat Training of Ab initio software 
 	# Repeat rounds 1.5 and 2 until AED scores are desireable
-	# Last Maker Round: Run Blastp to add functional annotations to MAKER results in GFF3 file
+	# Last Maker Round: Run EggNOG-mapperv2 to add functional annotations to MAKER results in GFF3 file
 	
 # Round 0: BUSCO Assessment of Genome Assembly and Eggnog-mapper annotations generated 
 
@@ -268,43 +268,127 @@ mv wcm_rnd2abinitio.all.maker.noseq.gff wcm_rnd2_abinitio_wcm_pseudochromosomes.
 	perl $SCC_MAKER_BIN/AED_cdf_generator.pl -b 0.025  wcm_rnd2_abinitio_wcm_pseudochromosomes.all.maker.all.gff> AEDplot_snap_augustus_rnd1
 	#copy the results of this file in excel and highlight the column it pasted into and go to Data > text to column and then make a plot, the more gene models closer to 0, the better 
 
-#-------POST-AB INITIO: Protein name mapping--------
+#-------POST-AB INITIO: Functional Annotation--------
 
-# run Blast against the fasta and then we will add it to the GFF3 file 
-##Tutorial for this: http://weatherby.genetics.utah.edu/MAKER/wiki/index.php/MAKER_Tutorial_for_WGS_Assembly_and_Annotation_Winter_School_2018
+#$ -o emapper_functional_annotations_run2.qlog
+#$ -l h_rt=24:00:00
+#$ -pe omp 28
+#$ -l mem_per_core=9G
+echo "=========================================================="
+echo "Starting on : $(date)"
+echo "Running on node : $(hostname)"
+echo "Current directory : $(pwd)"
+echo "Current job ID : $JOB_ID"
+echo "Current job name : $JOB_NAME"
+echo "=========================================================="
 
-#need to format uniprot fasta into Blast database if you haven't already
-module load blast+
-makeblastdb -in uniprot_sprot.fasta -dbtype prot -out uniprot_db
+module load sqlite3/3.37.2
 
-#add to job file:
-	module load blast+/2.12.0
-	BLASTDB="/projectnb/mullenl/alqassar/wcm_annotation/3_functional_annotations"
+source /projectnb/mullenl/alqassar/software/eggmapp/bin/activate
+EGGNOG_DATA_DIR=/projectnb/mullenl/alqassar/software/eggmapp/data
+emapper.py --cpu $NSLOTS -i wcm_rnd2_abinitio.all.maker.proteins.fasta --itype proteins  -m diamond \
+        --tax_scope_mode Lepidoptera --output_dir /projectnb/mullenl/alqassar/wcm_annotation/3_emapper_functional_annotations \
+        --output emapper_output --decorate_gff wcm_rnd2_abinitio_wcm_pseudochromosomes.all.maker.all.gff --excel
 
-	blastp -db ${BLASTDB}/uniprot_db -query ${BLASTDB}/wcm_rnd2_abinitio.all.maker.proteins.fasta \
-	-evalue 1e-6 -max_hsps 1 -max_target_seqs 1 -outfmt 6 -num_threads $NSLOTS > ${BLASTDB}/output.blastp
+# code to clean up GFF 
 
-# add putative functions from the BLAST report to GFF3 file 
-qrsh -l h_rt=6:00:00 -pe omp 4
-cd /projectnb/mullenl/alqassar/wcm_annotation/3_functional_annotations
-module load mvapich/2.3.7
-module load maker/3.01.04
-BLASTDB="/projectnb/mullenl/alqassar/wcm_annotation/protein_mapping"
-maker_functional_gff uniprot_sprot.fasta output.blastp ../2run_maker/wcm_pseudochromosomes_renamed.maker.output/wcm_rnd2_abinitio_wcm_pseudochromosomes.all.maker.all.gff> rnd2_abinitio_functional_annotations.all.gff
+# install GFFUtils 
+# download https://github.com/fls-bioinformatics-core/GFFUtils/releases
+tar xzf GFFUtils-0.10.3.tar.gz
+
+virtualenv venv
+source venv/bin/activate
+pip install -r ./GFFUtils-0.10.3/requirements.txt
+pip install ./GFFUtils-0.10.3/
+
+#when I tried to run gff_cleaner it gave me an error so I had to modify:
+ nano /projectnb/mullenl/alqassar/software/GFFUtils/venv/lib/python3.10/site-packages/GFFUtils/GFFFile.py
+ 	# from collections import Iterator 
+ 	# to:
+ 	# from collections.abc import Iterator
+
+cd /projectnb/mullenl/alqassar/wcm_annotation/3_emapper_functional_annotations/
+gff_cleaner --clean emapper_output.emapper.decorated.gff  -o emapper_output.emapper.decorated.clean.gff  
+
+#there was this error:
+gffcleaner 0.12.0
+Input : emapper_output.emapper.decorated.gff
+Output: emapper_output.emapper.decorated.clean.gff
+Replacing 'Anc_*' and blanks with '0's in 'score' column
+Traceback (most recent call last):
+  File "/projectnb/mullenl/alqassar/software/GFFUtils/venv/bin/gff_cleaner", line 8, in <module>
+    sys.exit(main())
+  File "/projectnb/mullenl/alqassar/software/GFFUtils/venv/lib/python3.10/site-packages/GFFUtils/cli/gff_cleaner.py", line 267, in main
+    score_unexpected_values = sorted(list(score_unexpected_values))
+TypeError: '<' not supported between instances of 'str' and 'float'
+
+# trying to fix this way:
+	pip install pandas 
+
+	#make python script check_gff.py
+	
+# now retry with cleaned gff 
+gff_cleaner --clean emapper_output.emapper.decorated.pre_clean.gff  -o emapper_output.emapper.decorated.clean.gff  
+
+# that did not work so now trying to install funannotate
+micromamba create -n funannotate -c bioconda -c conda-forge funannotate
+eval "$(micromamba shell hook --shell bash)" # needed this because of this error: 'micromamba' is running as a subprocess and can't modify the parent shell.
+												# Thus you must initialize your shell before using activate and deactivate.
+
+micromamba activate funannotate
+funannotate -h #to check install
 
 
-cat  rnd2_abinitio_functional_annotations.all.gff | awk '{ if ($3 == "gene") print $0 }' | awk '{ sum += ($5 - $4) } END { print NR, sum / NR }'
 
-	Results: 11,267 gene models with gene length of 7263.05
+awk 'NR==FNR{map[$1]=$2; next} {for (i=1; i<=NF; i++) if ($i in map) $i=map[$i]} 1' replacement.txt  emapper_output.emapper.decorated.clean.gff > output.gff
 
-	# generate summary statistics 
-	qrsh -l h_rt=6:00:00 -pe omp 4
-	cd /projectnb/mullenl/alqassar/wcm_annotation/3_functional_annotations
-	module load perl/5.28.1
-	module load bioperl/1.7.2
-	module load agat/0.7.0
-	agat_sp_statistics.pl --gff rnd2_abinitio_functional_annotations.all.gff -o rnd2_ab_initio_functional_annotations_wcm_annotation_summary
 
-	#to generate the amount of repetitive elements masked
-		awk '{ if ($2 ~ "repeat") print $0 }' rnd2_abinitio_functional_annotations.all.gff | wc -l
 
+awk 'NR==FNR {map[$1] = $2; next} 
+{
+    for (key in map) {
+        gsub(key, map[key]);
+    }
+    print
+}' replacement.txt emapper_output.emapper.decorated.clean.gff > output.gff
+# I renamed this gff to be JBFQDO000000000_annotation.gff
+
+
+# to get the number of genes annotated
+awk '$3 == "gene" {split($9, a, ";"); print a[1]}' wcm_rnd2_abinitio_wcm_pseudochromosomes.all.maker.all.gff | cut -d'=' -f2 > old_gene_ids.txt
+# to get the number f genes functionally annotated
+grep -Ff old_gene_ids.txt emapper_output.emapper.annotations.tsv > annotated_genes.tsv
+
+
+# I need to filter out any annotations in the hard masked regions due to bacterial contamination
+#generated a file with all the regions that are hardmasked 
+#now will use bedtools to see regions that do not intersect with these hardmasked regions 
+# but first need to rename to NCBI accession no in bed file 
+awk 'NR==FNR {map[$1] = $2; next} {for (key in map) gsub(key, map[key]); print}' replacement.txt hardmasked_regions.bed > hardmasked_regions_renamed.bed
+
+
+
+
+bedtools intersect -v -a JBFQDO000000000_annotation.gff -b hardmasked_regions_renamed.bed > JBFQDO000000000_filtered_annotations.gff
+
+
+# to get the number of genes annotated
+awk '$3 == "gene" {split($9, a, ";"); print a[1]}' JBFQDO000000000_filtered_annotations.gff | cut -d'=' -f2 > filtered_gene_ids.txt
+wc -l filtered_gene_ids.txt
+
+# need to rename gene names in emapper table
+awk 'NR==FNR {map[$1] = $2; next} {for (key in map) gsub(key, map[key]); print}' replacement.txt emapper_output.emapper.annotations.tsv > emapper_output_renamed.emapper.annotations.tsv
+
+# now can get number of genes functionally annotated in filtered gff
+grep -Ff filtered_gene_ids.txt emapper_output_renamed.emapper.annotations.tsv > filtered_annotated_genes.tsv
+wc -l filtered_annotated_genes.tsv 
+# 11,037 functionally annotated out of 11,259 total genes 
+
+# need to assess if any of the annotation statistics changed from functional annotation plus removing stuff in regions that were hard masked due to bacterial contamination
+module load perl/5.28.1
+  module load bioperl/1.7.2
+  module load agat/0.7.0
+  agat_sp_statistics.pl --gff JBFQDO000000000_filtered_annotations.gff -o JBFQDO000000000_filtered_annotations_summary
+
+#to rename chromosomes in protein file
+awk 'NR==FNR {map[$1] = $2; next} {for (key in map) gsub(key, map[key]); print}' replacement.txt wcm_rnd2_abinitio.all.maker.proteins.fasta > wcm_rnd2_abinitio.all.maker.proteins.renamed.fasta
