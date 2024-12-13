@@ -14,7 +14,7 @@ Contact info: Jasmine Alqassar (j.alqassar@gwu.edu)
 
 <h2> Genome Annotation </h2>
 <body> The pseudochromosome genome assembly was annotated following the original MAKER pipeline detailed in Cantarel et al. (2008) using the most up-to-date version of the program, MAKER v3.01.04, with the modifications detailed in the manuscript and the following figure. </body> 
-<img width="100" height="auto" alt="image" src="https://github.com/user-attachments/assets/764cb421-7315-4294-b38a-718059788ba3" />
+<img width="100%" height="auto" alt="image" src="https://github.com/user-attachments/assets/764cb421-7315-4294-b38a-718059788ba3" />
 
 <h2> Synteny Analysis </h2>
 <body>Satsuma was used to perform the synteny analysis (Grabherr et al., 2010), and the R package RIdeogram was used to visualize the output of Satsuma (Hao et al., 2020). Additionally, the synteny alignment between the <em>Tineola bisselliella </em> pseudochromosome genome assembly and <em>Tinea pellionella </em> genome was visualized as a Circos plot using the R package Circlize (Gu et al., 2014). </body>
