@@ -13,8 +13,8 @@ Contact info: Jasmine Alqassar (j.alqassar@gwu.edu)
 <body> Ten live <em>T. bisselliella</em> individuals (five early-stage larvae, three late-stage larvae, and two adults) were sampled from a colony that was established in the lab in June 2022. RNA was extracted from each individual using a Qiagen RNeasy Micro Kit. Samples were separated into three barcoded pools based on developmental stage (i.e., early-stage larvae, late-stage larvae, or adult) and were then prepped using the Illumina Stranded mRNA Prep method. 100 bp paired-end sequencing of all three libraries was performed on an Illumina NovaSeq Flowcell. The paired-end RNAseq data were assembled and annotated following the protocol presented in Rivera and Davies (2021). </body>
 
 <h2> Genome Annotation </h2>
-<body> The pseudochromosome genome assembly was annotated following the original MAKER pipeline detailed in Cantarel et al. (2008) using the most up-to-date version of the program, MAKER v3.01.04, with the modifications detailed in the manuscript and the following figure.<img width="468" alt="image" src="https://github.com/user-attachments/assets/764cb421-7315-4294-b38a-718059788ba3" />
- </body> 
+<body> The pseudochromosome genome assembly was annotated following the original MAKER pipeline detailed in Cantarel et al. (2008) using the most up-to-date version of the program, MAKER v3.01.04, with the modifications detailed in the manuscript and the following figure. </body> 
+<img width="100" height="auto" alt="image" src="https://github.com/user-attachments/assets/764cb421-7315-4294-b38a-718059788ba3" />
 
 <h2> Synteny Analysis </h2>
 <body>Satsuma was used to perform the synteny analysis (Grabherr et al., 2010), and the R package RIdeogram was used to visualize the output of Satsuma (Hao et al., 2020). Additionally, the synteny alignment between the <em>Tineola bisselliella </em> pseudochromosome genome assembly and <em>Tinea pellionella </em> genome was visualized as a Circos plot using the R package Circlize (Gu et al., 2014). </body>
